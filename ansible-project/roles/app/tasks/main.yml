@@ -1,0 +1,5 @@
+- name: Copy movie-app dist files
+  copy:
+    src: ../../../movie-app/dist/
+    dest: /var/www/html/
+    mode: '0644'

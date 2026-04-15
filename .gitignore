@@ -1,0 +1,58 @@
+# Terraform
+terraform-azure/.terraform/
+terraform-azure/.terraform.lock.hcl
+terraform-azure/*.tfstate
+terraform-azure/*.tfstate.*
+terraform-azure/crash.log
+terraform-azure/crash.*.log
+terraform-azure/override.tf
+terraform-azure/override.tf.json
+terraform-azure/*_override.tf
+terraform-azure/*_override.tf.json
+terraform-azure/.terraformrc
+terraform-azure/terraform.rc
+
+# Node.js / Movie App
+movie-app/node_modules/
+movie-app/dist/
+movie-app/.env
+movie-app/.env.local
+movie-app/.env.*.local
+movie-app/*.log
+movie-app/npm-debug.log*
+movie-app/yarn-debug.log*
+movie-app/yarn-error.log*
+movie-app/.DS_Store
+
+# Ansible
+ansible-project/.retry
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+*.sublime-workspace
+
+# OS
+.DS_Store
+Thumbs.db
+
+# SSH Keys (never commit!)
+~/.ssh/
+*.pem
+*.key
+id_rsa
+id_rsa.pub
+
+# Credentials
+.env
+.env.example
+secrets.txt
+credentials.json
+
+# Local development
+.tmp/
+.cache/

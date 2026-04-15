@@ -1,0 +1,38 @@
+- name: Install nginx
+  apt:
+    name: nginx
+    state: present
+
+- name: Configure nginx for SPA
+  copy:
+    dest: /etc/nginx/sites-available/default
+    content: |
+      server {
+          listen 80 default_server;
+          listen [::]:80 default_server;
+
+          root /var/www/html;
+          index index.html;
+
+          server_name _;
+
+          location / {
+              try_files $uri $uri/ /index.html;
+          }
+
+          location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg)$ {
+              expires 1y;
+              add_header Cache-Control "public, immutable";
+          }
+      }
+
+- name: Start nginx
+  service:
+    name: nginx
+    state: started
+    enabled: yes
+
+- name: Reload nginx
+  service:
+    name: nginx
+    state: reloaded
