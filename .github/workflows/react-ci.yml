@@ -1,0 +1,57 @@
+name: CI - React App
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'movie-app/**'
+      - '.github/workflows/react-ci.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'movie-app/**'
+
+jobs:
+  lint-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: movie-app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: movie-app
+        run: npm ci
+
+      - name: Run ESLint
+        working-directory: movie-app
+        run: npm run lint
+        continue-on-error: true
+
+      - name: Build application
+        working-directory: movie-app
+        run: npm run build
+
+      - name: Verify build output
+        working-directory: movie-app
+        run: |
+          if [ ! -f dist/index.html ]; then
+            echo "❌ Build failed: dist/index.html not found"
+            exit 1
+          fi
+          echo "✓ Build successful"
+          ls -lah dist/
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: react-build
+          path: movie-app/dist/
+          retention-days: 5

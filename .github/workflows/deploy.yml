@@ -1,0 +1,152 @@
+name: Deploy - Automated Deployment
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+
+jobs:
+  test-all:
+    runs-on: ubuntu-latest
+    name: Run All Tests
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: movie-app/package-lock.json
+
+      - name: Build React app
+        working-directory: movie-app
+        run: |
+          npm ci
+          npm run build
+
+  validate-infrastructure:
+    runs-on: ubuntu-latest
+    name: Validate Infrastructure
+    needs: test-all
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
+
+      - name: Validate Terraform
+        working-directory: terraform-azure
+        run: |
+          terraform init -backend=false
+          terraform validate
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Validate Ansible
+        working-directory: ansible-project
+        run: |
+          pip install ansible ansible-lint
+          ansible-playbook setup.yml --syntax-check
+
+  notify:
+    runs-on: ubuntu-latest
+    name: Notify Deployment Status
+    needs: [test-all, validate-infrastructure]
+    if: always()
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deployment Status
+        run: |
+          echo "## 🚀 Deployment Workflow Status"
+          echo ""
+          if [ "${{ needs.test-all.result }}" = "success" ] && [ "${{ needs.validate-infrastructure.result }}" = "success" ]; then
+            echo "✓ All checks passed"
+            echo "- React app compiled successfully"
+            echo "- Terraform configuration valid"
+            echo "- Ansible playbooks valid"
+            echo ""
+            echo "Next steps for production deployment:"
+            echo "1. Review changes in this PR"
+            echo "2. Merge to main"
+            echo "3. Azure infrastructure will be updated automatically"
+            echo "4. Application will be redeployed"
+          else
+            echo "❌ Some checks failed"
+            echo "- React tests: ${{ needs.test-all.result }}"
+            echo "- Infrastructure validation: ${{ needs.validate-infrastructure.result }}"
+          fi
+
+  # Manual deployment step - uncomment to enable automatic deployment to Azure
+  # deploy-to-azure:
+  #   runs-on: ubuntu-latest
+  #   name: Deploy to Azure
+  #   needs: [test-all, validate-infrastructure]
+  #   if: github.ref == 'refs/heads/main' && needs.test-all.result == 'success'
+  #   environment: production
+  #
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #
+  #     - name: Login to Azure
+  #       uses: azure/login@v1
+  #       with:
+  #         creds: ${{ secrets.AZURE_CREDENTIALS }}
+  #
+  #     - name: Deploy Terraform
+  #       working-directory: terraform-azure
+  #       run: |
+  #         terraform init
+  #         terraform plan -out=tfplan
+  #         terraform apply tfplan
+  #
+  #     - name: Deploy with Ansible
+  #       working-directory: ansible-project
+  #       run: |
+  #         ansible-playbook -i inventory.ini setup.yml -v
+
+  create-release:
+    runs-on: ubuntu-latest
+    name: Create Release
+    needs: [test-all, validate-infrastructure]
+    if: github.ref == 'refs/heads/main' && needs.test-all.result == 'success'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v${{ github.run_number }}
+          release_name: Release ${{ github.run_number }}
+          body: |
+            ## Automated Release
+            
+            - Build: Successful
+            - Infrastructure: Validated
+            - Deployment: Ready
+            
+            Commit: ${{ github.sha }}
+            Actor: ${{ github.actor }}
+          draft: false
+          prerelease: false

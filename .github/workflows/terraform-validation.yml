@@ -1,0 +1,72 @@
+name: Terraform - Validate & Plan
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'terraform-azure/**'
+      - '.github/workflows/terraform-validation.yml'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'terraform-azure/**'
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v2
+        with:
+          terraform_version: 1.6.0
+
+      - name: Initialize Terraform
+        working-directory: terraform-azure
+        run: terraform init -backend=false
+
+      - name: Format check
+        working-directory: terraform-azure
+        run: |
+          terraform fmt -check -recursive
+        continue-on-error: true
+
+      - name: Validate configuration
+        working-directory: terraform-azure
+        run: terraform validate
+
+      - name: Plan (dry-run)
+        working-directory: terraform-azure
+        run: |
+          terraform plan -out=tfplan -input=false
+        env:
+          TF_VAR_location: eastus
+          TF_VAR_environment: preview
+        continue-on-error: true
+
+      - name: Upload plan artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: terraform-plan
+          path: terraform-azure/tfplan
+          retention-days: 5
+
+      - name: Comment PR with plan
+        if: github.event_name == 'pull_request' && always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const planPath = 'terraform-azure/tfplan';
+            
+            if (fs.existsSync(planPath)) {
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: '✓ Terraform plan completed successfully\n\nReview the artifact for details.'
+              });
+            }

@@ -1,0 +1,126 @@
+name: Security - Scan for Secrets & Vulnerabilities
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    - cron: '0 0 * * 0' # Weekly scan
+
+jobs:
+  secrets-check:
+    runs-on: ubuntu-latest
+    name: Detect Secrets
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install detect-secrets
+        run: pip install detect-secrets
+
+      - name: Scan for secrets
+        run: |
+          detect-secrets scan --all-files --force-use-all-plugins > secrets.json
+          if [ $(jq '.results | length' secrets.json) -gt 0 ]; then
+            echo "❌ Secrets detected!"
+            jq '.results' secrets.json
+            exit 1
+          fi
+          echo "✓ No secrets detected"
+
+      - name: Check for API keys in code
+        run: |
+          if grep -r "api_key\|TMDB_API_KEY\|apiKey" --include="*.tsx" --include="*.ts" --include="*.json" . \
+             | grep -v "node_modules" \
+             | grep -v ".git" \
+             | grep -v ".env"; then
+            echo "⚠ Possible API key references found - verify they're not exposed"
+          else
+            echo "✓ No obvious API key exposures"
+          fi
+
+  dependency-check:
+    runs-on: ubuntu-latest
+    name: Check Dependencies
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: movie-app/package-lock.json
+
+      - name: Install dependencies
+        working-directory: movie-app
+        run: npm ci
+
+      - name: Run npm audit
+        working-directory: movie-app
+        run: npm audit --audit-level=moderate
+        continue-on-error: true
+
+  code-scan:
+    runs-on: ubuntu-latest
+    name: CodeQL Scan
+
+    strategy:
+      matrix:
+        language: [ 'javascript' ]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v2
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v2
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v2
+
+  file-permissions:
+    runs-on: ubuntu-latest
+    name: Check File Permissions
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for executable scripts
+        run: |
+          if [ -f deploy.sh ] && [ -x deploy.sh ]; then
+            echo "✓ deploy.sh is executable"
+          fi
+          if [ -f diagnose.sh ] && [ -x diagnose.sh ]; then
+            echo "✓ diagnose.sh is executable"
+          fi
+
+      - name: Verify .gitignore coverage
+        run: |
+          echo "Checking .gitignore..."
+          if grep -q "\.env" .gitignore; then
+            echo "✓ .env files ignored"
+          else
+            echo "⚠ .env files NOT in .gitignore - SECRET RISK!"
+            exit 1
+          fi
+          
+          if grep -q "\.pem\|\.key" .gitignore; then
+            echo "✓ SSH keys ignored"
+          else
+            echo "⚠ SSH keys NOT in .gitignore - SECRET RISK!"
+            exit 1
+          fi
