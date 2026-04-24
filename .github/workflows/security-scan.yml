@@ -8,24 +8,25 @@ on:
   schedule:
     - cron: '0 0 * * 0' # Weekly scan
 
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
 jobs:
   secrets-check:
     runs-on: ubuntu-latest
     name: Detect Secrets
-
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-
       - name: Install detect-secrets
         run: pip install detect-secrets
-
       - name: Scan for secrets
         run: |
           detect-secrets scan --all-files --force-use-all-plugins > secrets.json
@@ -35,7 +36,6 @@ jobs:
             exit 1
           fi
           echo "✓ No secrets detected"
-
       - name: Check for API keys in code
         run: |
           if grep -r "api_key\|TMDB_API_KEY\|apiKey" --include="*.tsx" --include="*.ts" --include="*.json" . \
@@ -50,21 +50,17 @@ jobs:
   dependency-check:
     runs-on: ubuntu-latest
     name: Check Dependencies
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
           cache: 'npm'
           cache-dependency-path: movie-app/package-lock.json
-
       - name: Install dependencies
         working-directory: movie-app
         run: npm ci
-
       - name: Run npm audit
         working-directory: movie-app
         run: npm audit --audit-level=moderate
@@ -73,32 +69,25 @@ jobs:
   code-scan:
     runs-on: ubuntu-latest
     name: CodeQL Scan
-
     strategy:
       matrix:
         language: [ 'javascript' ]
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@v2
+        uses: github/codeql-action/init@v3 # Actualizado a v3
         with:
           languages: ${{ matrix.language }}
-
       - name: Autobuild
-        uses: github/codeql-action/autobuild@v2
-
+        uses: github/codeql-action/autobuild@v3 # Actualizado a v3
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@v2
+        uses: github/codeql-action/analyze@v3 # Actualizado a v3
 
   file-permissions:
     runs-on: ubuntu-latest
     name: Check File Permissions
-
     steps:
       - uses: actions/checkout@v4
-
       - name: Check for executable scripts
         run: |
           if [ -f deploy.sh ] && [ -x deploy.sh ]; then
@@ -107,7 +96,6 @@ jobs:
           if [ -f diagnose.sh ] && [ -x diagnose.sh ]; then
             echo "✓ diagnose.sh is executable"
           fi
-
       - name: Verify .gitignore coverage
         run: |
           echo "Checking .gitignore..."
@@ -117,7 +105,6 @@ jobs:
             echo "⚠ .env files NOT in .gitignore - SECRET RISK!"
             exit 1
           fi
-          
           if grep -q "\.pem\|\.key" .gitignore; then
             echo "✓ SSH keys ignored"
           else
