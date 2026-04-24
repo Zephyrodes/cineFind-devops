@@ -18,14 +18,13 @@ jobs:
   test-all:
     runs-on: ubuntu-latest
     name: Run All Tests
-
     steps:
       - uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22' # Actualizado a v22 para compatibilidad con Vite
+          node-version: '22'
           cache: 'npm'
           cache-dependency-path: movie-app/package-lock.json
 
@@ -39,17 +38,16 @@ jobs:
     runs-on: ubuntu-latest
     name: Validate Infrastructure
     needs: test-all
-
     steps:
       - uses: actions/checkout@v4
 
-      # 1. Generar llave SSH real para que terraform validate/plan no fallen
+      # Generar llave SSH para evitar error en terraform validate/plan
       - name: Create SSH Key for Validation
         run: |
           mkdir -p ~/.ssh
           ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N "" -q
 
-      # 2. Configurar Terraform (v1.9.0 corrige el error de "key expired")
+      # Setup Terraform v3 + v1.9.0 (Corrige clave GPG expirada)
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -78,21 +76,14 @@ jobs:
     name: Notify Deployment Status
     needs: [test-all, validate-infrastructure]
     if: always()
-
     steps:
       - name: Deployment Status
         run: |
           echo "## 🚀 Deployment Workflow Status"
-          echo ""
           if [ "${{ needs.test-all.result }}" = "success" ] && [ "${{ needs.validate-infrastructure.result }}" = "success" ]; then
             echo "✓ All checks passed"
-            echo "- React app compiled successfully"
-            echo "- Terraform configuration valid"
-            echo "- Ansible playbooks valid"
           else
             echo "❌ Some checks failed"
-            echo "- React tests: ${{ needs.test-all.result }}"
-            echo "- Infrastructure validation: ${{ needs.validate-infrastructure.result }}"
           fi
 
   create-release:
@@ -100,11 +91,16 @@ jobs:
     name: Create Release
     needs: [test-all, validate-infrastructure]
     if: github.ref == 'refs/heads/main' && needs.test-all.result == 'success'
+    
+    # Permisos necesarios para solucionar "Resource not accessible by integration"
+    permissions:
+      contents: write
+      pull-requests: read
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Create Release
+      - name: Create GitHub Release
         uses: actions/create-release@v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -112,13 +108,13 @@ jobs:
           tag_name: v${{ github.run_number }}
           release_name: Release ${{ github.run_number }}
           body: |
-            ## Automated Release
+            ## Automated Release v${{ github.run_number }}
             
-            - Build: Successful
-            - Infrastructure: Validated
+            - Build: Successful (Node 22)
+            - Infrastructure: Validated (Terraform 1.9.0)
             - Deployment: Ready
             
-            Commit: ${{ github.sha }}
-            Actor: ${{ github.actor }}
+            **Commit:** ${{ github.sha }}
+            **Actor:** ${{ github.actor }}
           draft: false
           prerelease: false
