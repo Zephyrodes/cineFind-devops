@@ -25,7 +25,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '22' # Actualizado a v22 para compatibilidad con Vite
           cache: 'npm'
           cache-dependency-path: movie-app/package-lock.json
 
@@ -43,14 +43,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # 1. Generar llave SSH real para que terraform validate/plan no fallen
+      - name: Create SSH Key for Validation
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N "" -q
+
+      # 2. Configurar Terraform (v1.9.0 corrige el error de "key expired")
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.6.0
+          terraform_version: 1.9.0
 
       - name: Validate Terraform
         working-directory: terraform-azure
         run: |
+          rm -rf .terraform
           terraform init -backend=false
           terraform validate
 
@@ -72,8 +80,6 @@ jobs:
     if: always()
 
     steps:
-      - uses: actions/checkout@v4
-
       - name: Deployment Status
         run: |
           echo "## 🚀 Deployment Workflow Status"
@@ -83,45 +89,11 @@ jobs:
             echo "- React app compiled successfully"
             echo "- Terraform configuration valid"
             echo "- Ansible playbooks valid"
-            echo ""
-            echo "Next steps for production deployment:"
-            echo "1. Review changes in this PR"
-            echo "2. Merge to main"
-            echo "3. Azure infrastructure will be updated automatically"
-            echo "4. Application will be redeployed"
           else
             echo "❌ Some checks failed"
             echo "- React tests: ${{ needs.test-all.result }}"
             echo "- Infrastructure validation: ${{ needs.validate-infrastructure.result }}"
           fi
-
-  # Manual deployment step - uncomment to enable automatic deployment to Azure
-  # deploy-to-azure:
-  #   runs-on: ubuntu-latest
-  #   name: Deploy to Azure
-  #   needs: [test-all, validate-infrastructure]
-  #   if: github.ref == 'refs/heads/main' && needs.test-all.result == 'success'
-  #   environment: production
-  #
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #
-  #     - name: Login to Azure
-  #       uses: azure/login@v1
-  #       with:
-  #         creds: ${{ secrets.AZURE_CREDENTIALS }}
-  #
-  #     - name: Deploy Terraform
-  #       working-directory: terraform-azure
-  #       run: |
-  #         terraform init
-  #         terraform plan -out=tfplan
-  #         terraform apply tfplan
-  #
-  #     - name: Deploy with Ansible
-  #       working-directory: ansible-project
-  #       run: |
-  #         ansible-playbook -i inventory.ini setup.yml -v
 
   create-release:
     runs-on: ubuntu-latest
