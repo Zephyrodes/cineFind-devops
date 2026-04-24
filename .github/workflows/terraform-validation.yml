@@ -19,20 +19,21 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      # 1. Crear llave SSH dummy con formato válido para evitar error de decodificación
-      - name: Create Dummy SSH Key
+      # 1. Generar una llave SSH real al vuelo. 
+      # Esto garantiza que el formato sea 100% válido para el proveedor de Azure.
+      - name: Create Real SSH Key for Validation
         run: |
           mkdir -p ~/.ssh
-          # Una llave rsa válida requiere una longitud y estructura específica para ser decodificada por azurerm
-          echo "ssh-rsa AAAAB3Nza1yc2EAAAADAQABAAABgQC6H7vLpZ7kXf8jG9hI0kL1mN2oP3qR4sT5uV6wX7yZ8a9b0c1d2e3f4g5h6i7j8k9l0m1n2o3p4q5r6s7t8u9v0w1x2y3z4A5B6C7D8E9F0G1H2I3J4K5L6M7N8O9P0Q1R2S3T4U5V6W7X8Y9Z0a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6q7r8s9t0u1v2w3x4y5z6A1B2C3D4E5F6G7H8I9J0K1L2M3N4O5P6Q7R8S9T0U1V2W3X4Y5Z6 validator@terraform" > ~/.ssh/id_rsa.pub
+          ssh-keygen -t rsa -b 4096 -f ~/.ssh/id_rsa -N "" -q
+          echo "✓ Llave SSH generada correctamente para validación"
 
-      # 2. Configurar Terraform (v1.9.0 corrige el error de "key expired")
+      # 2. Configurar Terraform (v1.9.0 para evitar errores de firmas GPG)
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: 1.9.0
 
-      # 3. Inicializar (con limpieza de caché preventiva)
+      # 3. Inicializar
       - name: Initialize Terraform
         working-directory: terraform-azure
         run: |
@@ -45,7 +46,7 @@ jobs:
         run: terraform fmt -check -recursive
         continue-on-error: true
 
-      # 5. Validar (ahora decodificará la llave correctamente)
+      # 5. Validar (Ahora leerá la llave real recién generada)
       - name: Validate configuration
         working-directory: terraform-azure
         run: terraform validate
@@ -68,7 +69,7 @@ jobs:
           path: terraform-azure/tfplan
           retention-days: 5
 
-      # 8. Comentar en el PR si aplica
+      # 8. Comentar en el PR
       - name: Comment PR with plan
         if: github.event_name == 'pull_request' && always()
         uses: actions/github-script@v7
@@ -82,6 +83,6 @@ jobs:
                 issue_number: context.issue.number,
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                body: '### ✓ Terraform Plan Completado\n\nLa configuración es válida y el plan se ha generado correctamente utilizando una llave de validación temporal.'
+                body: '### ✓ Terraform CI\n\nLa configuración ha sido validada con éxito. Se ha generado una llave SSH temporal para el proceso de validación técnica.'
               });
             }
