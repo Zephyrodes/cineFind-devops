@@ -5,8 +5,8 @@
 - [ ] Workflows creados en `.github/workflows/`
 - [ ] Repositorio público o privado en GitHub
 - [ ] GitHub Actions análisis habilitado
-- [ ] (Opcional) Secretos de Azure configurados
-- [ ] (Opcional) Notificaciones configuradas
+- [ ] Permisos de `security-events: write` configurados en `security-scan.yml`
+- [ ] Secretos de Azure configurados
 
 ---
 
@@ -36,9 +36,9 @@ gh secret delete AZURE_CREDENTIALS
 
 ---
 
-## 🔑 Secretos Recomendados
+## 🔑 Secretos
 
-### 1. AZURE_CREDENTIALS (para deploy automático)
+### AZURE_CREDENTIALS (para deploy automático)
 
 ```bash
 # 1. Crear Service Principal
@@ -64,19 +64,63 @@ Formato esperado:
 }
 ```
 
-### 2. TMDB_API_KEY (para CI de React)
+---
 
-```bash
-gh secret set TMDB_API_KEY
-# Pegar tu API key de TMDB
+## ⚠️ Fix: CodeQL - `Resource not accessible by integration`
+
+Si el job `code-scan` falla con este error al subir resultados SARIF, es porque
+el `GITHUB_TOKEN` no tiene permiso `security-events: write` declarado explícitamente.
+
+### Causa
+
+Sin declarar permisos, el token opera en modo de solo lectura por defecto,
+bloqueando la carga de resultados al tab de Security.
+
+### Solución: actualizar el job `code-scan` en `security-scan.yml`
+
+```yaml
+  code-scan:
+    runs-on: ubuntu-latest
+    name: CodeQL Scan
+    permissions:               # ← Agregar este bloque
+      actions: read
+      contents: read
+      security-events: write   # ← Requerido para subir resultados SARIF
+    strategy:
+      matrix:
+        language: [ 'javascript' ]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3       # ← v2 → v3 (v2 está deprecado)
+        with:
+          languages: ${{ matrix.language }}
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3  # ← v2 → v3
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3    # ← v2 → v3
 ```
 
-### 3. PAT (Personal Access Token) - Opcional
+### Alternativa: permisos globales en el workflow
 
-```bash
-# Para workflows que necesiten hacer commits
-gh secret set GITHUB_TOKEN
+Si varios jobs necesitan estos permisos, puedes declararlos una sola vez
+antes de la sección `jobs:`:
+
+```yaml
+permissions:
+  actions: read
+  contents: read
+  security-events: write
 ```
+
+### Verificar permisos del repositorio
+
+Si el error persiste, revisa la configuración en:
+
+**Settings → Actions → General → Workflow permissions**
+
+Asegúrate de que esté en **"Read and write permissions"**, o que la opción
+**"Allow GitHub Actions to create and approve pull requests"** esté habilitada.
 
 ---
 
@@ -168,41 +212,7 @@ gh api graphql -f owner='{owner}' -f name='{repo}' < query.graphql
      environment: production
    ```
 
-3. **Configura environment de producción (opcional):**
-   - Settings > Environments > New environment
-   - Nombre: `production`
-   - Add protection rule (require approval)
-
-4. **Merge a main** - El deploy automático se ejecutará
-
----
-
-## 🔔 Notificaciones
-
-### Slack Integration
-
-```bash
-# 1. Crear webhook en Slack
-# https://api.slack.com/apps > Create New App > Incoming Webhooks
-
-# 2. Agregar secret
-gh secret set SLACK_WEBHOOK_URL < webhook_url.txt
-
-# 3. Agregar step en workflow
-- name: Notify Slack
-  uses: slackapi/slack-github-action@v1
-  with:
-    webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
-    payload: |
-      {
-        "text": "Deployment ${{ job.status }}"
-      }
-```
-
-### Email Notifications
-
-- Desde GitHub: Settings > Notifications > Email
-- Tipo: All activity, Participating, Watching
+3. **Merge a main** - El deploy automático se ejecutará
 
 ---
 
@@ -251,6 +261,15 @@ gh run rerun RUN_ID --debug
     fi
 ```
 
+| Problema | Causa | Solución |
+|----------|-------|----------|
+| `Resource not accessible by integration` | Token sin `security-events: write` | Agregar bloque `permissions` al job `code-scan` |
+| CodeQL actions deprecadas | Uso de `codeql-action/v2` | Migrar a `codeql-action/v3` |
+| `npm: command not found` | Node.js no instalado en runner | Usar `actions/setup-node@v4` |
+| Terraform plan falla | State local no inicializado | Usar `terraform init -backend=false` |
+| Ansible syntax error | Playbook mal formado | Ejecutar localmente: `ansible-playbook --syntax-check` |
+| Secrets detectados falsamente | Palabras coinciden con patrones | Ajustar configuración en `security-scan.yml` |
+
 ---
 
 ## 📖 Documentación Adicional
@@ -259,6 +278,7 @@ gh run rerun RUN_ID --debug
 - [Workflow Syntax](https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions)
 - [Events that Trigger Workflows](https://docs.github.com/en/actions/using-workflows/events-that-trigger-workflows)
 - [Environment Variables](https://docs.github.com/en/actions/learn-github-actions/environment-variables)
+- [CodeQL Action v3 Migration](https://github.blog/changelog/2024-01-12-code-scanning-deprecation-of-codeql-action-v2/)
 
 ---
 
@@ -281,5 +301,3 @@ gh run view $(gh run list --limit 1 --json databaseId -q .[0].databaseId)
 ```
 
 ---
-
-**¡Listo!** Los workflows están configurados y listos para usar. 🎉
