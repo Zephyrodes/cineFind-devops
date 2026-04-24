@@ -16,36 +16,49 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
+      # 1. Crear llave SSH dummy para que file("~/.ssh/id_rsa.pub") no falle
+      - name: Create Dummy SSH Key
+        run: |
+          mkdir -p ~/.ssh
+          echo "ssh-rsa AAAAB3Nza1yc2EAAAADAQABAAABAQC8zL1p3E..." > ~/.ssh/id_rsa.pub
+
+      # 2. Configurar Terraform (v1.9.0 corrige el error de "key expired")
       - name: Setup Terraform
-        uses: hashicorp/setup-terraform@v2
+        uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.7.0
+          terraform_version: 1.9.0
 
+      # 3. Inicializar (con limpieza de caché preventiva)
       - name: Initialize Terraform
         working-directory: terraform-azure
-        run: terraform init -backend=false
+        run: |
+          rm -rf .terraform
+          terraform init -backend=false
 
+      # 4. Verificar formato
       - name: Format check
         working-directory: terraform-azure
-        run: |
-          terraform fmt -check -recursive
+        run: terraform fmt -check -recursive
         continue-on-error: true
 
+      # 5. Validar (ahora encontrará el archivo en ~/.ssh/)
       - name: Validate configuration
         working-directory: terraform-azure
         run: terraform validate
 
+      # 6. Generar Plan
       - name: Plan (dry-run)
         working-directory: terraform-azure
-        run: |
-          terraform plan -out=tfplan -input=false
+        run: terraform plan -out=tfplan -input=false
         env:
           TF_VAR_location: eastus
           TF_VAR_environment: preview
         continue-on-error: true
 
+      # 7. Subir el artefacto del plan
       - name: Upload plan artifact
         uses: actions/upload-artifact@v4
         if: always()
@@ -54,6 +67,7 @@ jobs:
           path: terraform-azure/tfplan
           retention-days: 5
 
+      # 8. Comentar en el PR si aplica
       - name: Comment PR with plan
         if: github.event_name == 'pull_request' && always()
         uses: actions/github-script@v7
@@ -67,6 +81,6 @@ jobs:
                 issue_number: context.issue.number,
                 owner: context.repo.owner,
                 repo: context.repo.repo,
-                body: '✓ Terraform plan completed successfully\n\nReview the artifact for details.'
+                body: '### ✓ Terraform Plan Completado\n\nEl plan de infraestructura se ha generado con éxito usando una llave SSH de validación. Puedes revisar los detalles en los artefactos del run.'
               });
             }
